@@ -424,7 +424,7 @@ async function main() {
   }
   let { width, height } = await getImageResolution(snapshotFiles[0])
 
-  let averageFile = join(averageDir, `${filename}-average.jpg`)
+  let averageFile = join(averageDir, `${filename}-average-${step}.jpg`)
   if (!existsSync(averageFile)) {
     let canvas = createCanvas(width, height)
     let context = canvas.getContext('2d')
