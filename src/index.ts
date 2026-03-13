@@ -219,6 +219,14 @@ function findAllCaptionRegions(args: { delta: number[] }) {
   return regions
 }
 
+function tryFilter<T>(xs: T[], predicate: (x: T) => boolean): T[] {
+  let filtered = xs.filter(predicate)
+  if (filtered.length > 0) {
+    return filtered
+  }
+  return xs
+}
+
 function calculateCaptureRegion(args: {
   // y -> x -> [r, g, b, a]
   data: number[] | ImageData['data']
@@ -248,12 +256,23 @@ function calculateCaptureRegion(args: {
   }
   let captionRegions = findAllCaptionRegions({ delta })
   console.log({ allCaptionRegions: captionRegions })
-  let lowerParts = captionRegions.filter(
-    region => region.center / height > 0.5 && region.height >= 10,
+
+  // caption should be in the lower part of the screen
+  captionRegions = tryFilter(
+    captionRegions,
+    region => region.center / height > 0.5,
   )
-  if (lowerParts.length > 0) {
-    captionRegions = lowerParts
-  }
+
+  // caption should have enough height
+  captionRegions = tryFilter(captionRegions, region => region.height >= 10)
+
+  // caption should not be too tall
+  captionRegions = tryFilter(
+    captionRegions,
+    region => region.height <= height * 0.3,
+  )
+
+  // choose the one closest to the center of the screen
   captionRegions.sort((a, b) => a.center - b.center)
   console.log({ preferredCaptionRegions: captionRegions })
   let captionRegion = captionRegions[0]
