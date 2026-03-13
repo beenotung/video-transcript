@@ -185,6 +185,38 @@ async function getImageResolution(file: string) {
   return { width, height }
 }
 
+function findAllCaptionRegions(args: { delta: number[] }) {
+  let delta = args.delta.slice()
+
+  let regions = []
+
+  for (;;) {
+    let maxDelta = Math.max(...delta)
+    if (!maxDelta) break
+    let startIndex = delta.indexOf(maxDelta)
+    let rest = delta.slice(startIndex)
+    let minDelta = Math.min(...rest)
+    let endIndex = startIndex + rest.indexOf(minDelta)
+    let height = endIndex - startIndex + 1
+    let padding = Math.floor(height * 0.1)
+    startIndex = Math.max(0, startIndex - padding)
+    endIndex = Math.min(delta.length - 1, endIndex + padding)
+    height = endIndex - startIndex + 1
+    let center = Math.floor(startIndex + height / 2)
+    regions.push({
+      startIndex,
+      endIndex,
+      height,
+      center,
+    })
+    for (let i = startIndex; i <= endIndex; i++) {
+      delta[i] = 0
+    }
+  }
+
+  return regions
+}
+
 function calculateCaptureRegion(args: {
   // y -> x -> [r, g, b, a]
   data: number[] | ImageData['data']
@@ -212,32 +244,23 @@ function calculateCaptureRegion(args: {
   for (let i = 1; i < brightness.length; i++) {
     delta[i] = brightness[i] - brightness[i - 1]
   }
-
-  let maxDelta = Math.max(...delta)
-  if (maxDelta === 0) {
-    throw new Error('No caption region found')
+  let captionRegions = findAllCaptionRegions({ delta })
+  console.log({ allCaptionRegions: captionRegions })
+  let lowerParts = captionRegions.filter(
+    region => region.center / height > 0.5 && region.height >= 10,
+  )
+  if (lowerParts.length > 0) {
+    captionRegions = lowerParts
   }
-  let startIndex = delta.indexOf(maxDelta)
-  let rest = delta.slice(startIndex)
-  let minDelta = Math.min(...rest)
-  let endIndex = startIndex + rest.indexOf(minDelta)
-  let range = endIndex - startIndex
-  let padding = Math.floor(range * 0.1)
-  startIndex = Math.max(0, startIndex - padding)
-  endIndex = Math.min(height - 1, endIndex + padding)
-  let cropHeight = endIndex - startIndex + 1
-  console.log({
-    maxDelta,
-    minDelta,
-    startIndex,
-    endIndex,
-    cropHeight,
-    padding,
-  })
+  captionRegions.sort((a, b) => a.center - b.center)
+  console.log({ preferredCaptionRegions: captionRegions })
+  let captionRegion = captionRegions[0]
+  if (!captionRegion) throw new Error('No caption region found')
+
   return {
     width,
-    height: cropHeight,
-    top: startIndex,
+    height: captionRegion.height,
+    top: captionRegion.startIndex,
     left: 0,
     brightness,
     delta,
