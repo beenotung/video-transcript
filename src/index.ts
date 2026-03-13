@@ -5,6 +5,8 @@ import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { readdir, writeFile } from 'fs/promises'
 import { basename, join } from 'path'
 
+let paddingRatio = 0.75
+
 let downloadsDir = 'res/downloads'
 let snapshotDir = 'res/snapshots'
 let croppedDir = 'res/cropped'
@@ -198,7 +200,7 @@ function findAllCaptionRegions(args: { delta: number[] }) {
     let minDelta = Math.min(...rest)
     let endIndex = startIndex + rest.indexOf(minDelta)
     let height = endIndex - startIndex + 1
-    let padding = Math.floor(height * 0.1)
+    let padding = Math.floor(height * paddingRatio)
     startIndex = Math.max(0, startIndex - padding)
     endIndex = Math.min(delta.length - 1, endIndex + padding)
     height = endIndex - startIndex + 1
