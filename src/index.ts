@@ -280,7 +280,6 @@ async function main() {
   console.log({ duration })
   if (!duration) throw new Error('Invalid duration')
 
-  // TODO dynamically determine the step, or deduplicate the result based on OCR result
   let step = 0.5
   let timer = startTimer('takeSnapshot')
   timer.setEstimateProgress(duration)
