@@ -1,30 +1,37 @@
 import { startTimer } from '@beenotung/tslib/timer'
 import { spawnAndWait } from '@beenotung/tslib/child_process'
-import { createCanvas, loadImage } from 'canvas'
+import { createCanvas, ImageData, loadImage } from 'canvas'
 import {
   existsSync,
   mkdirSync,
   readdirSync,
   readFileSync,
+  writeFile,
   writeFileSync,
 } from 'fs'
 import { basename, join } from 'path'
 
-let downloadsDir = 'downloads'
-let snapshotDir = 'snapshots'
-let croppedDir = 'cropped'
-let resultDir = 'result'
+let downloadsDir = 'res/downloads'
+let snapshotDir = 'res/snapshots'
+let croppedDir = 'res/cropped'
+let resultDir = 'res/result'
+let averageDir = 'res/average'
 
 mkdirSync(downloadsDir, { recursive: true })
 mkdirSync(snapshotDir, { recursive: true })
 mkdirSync(croppedDir, { recursive: true })
 mkdirSync(resultDir, { recursive: true })
+mkdirSync(averageDir, { recursive: true })
 
 export async function downloadVideo(url: string) {
   var { stdout, stderr, code } = await spawnAndWait({
     cmd: 'yt-dlp',
     args: ['-F', url],
   })
+  if (code !== 0) {
+    console.error({ stdout, stderr, code })
+    throw new Error('Failed to get video formats')
+  }
   let lines = stdout.split('\n')
   let formats = []
   for (let line of lines) {
@@ -69,7 +76,11 @@ export async function downloadVideo(url: string) {
     args: ['-f', format.id.toString(), url],
     options: { cwd: downloadsDir },
   })
-  console.log({ code, stdout, stderr })
+  if (code !== 0) {
+    console.error({ stdout, stderr, code })
+    throw new Error('Failed to download video')
+  }
+  return { format }
 }
 
 function isVideoFormat(format: string) {
@@ -179,16 +190,37 @@ async function getImageResolution(file: string) {
 }
 
 function calculateCaptureRegion(args: {
+  // y -> x -> [r, g, b, a]
+  data: number[] | ImageData['data']
   width: number
   height: number
-  ys: number[]
 }) {
-  let { width, height, ys } = args
+  let { width, height, data } = args
+
+  let ys = new Array(height).fill(0)
+  let offset = 0
+  for (let y = 0; y < height; y++) {
+    let sum = 0
+    for (let x = 0; x < width; x++) {
+      let r = data[offset++]
+      let g = data[offset++]
+      let b = data[offset++]
+      let a = data[offset++] / 255
+      let brightness = (r + g + b) / 3
+      sum += brightness * a
+    }
+    ys[y] = sum / width
+  }
+
   let delta = new Array(ys.length).fill(0)
   for (let i = 1; i < ys.length; i++) {
     delta[i] = ys[i] - ys[i - 1]
   }
+
   let maxDelta = Math.max(...delta)
+  if (maxDelta === 0) {
+    throw new Error('No caption region found')
+  }
   let startIndex = delta.indexOf(maxDelta)
   let rest = delta.slice(startIndex)
   let minDelta = Math.min(...rest)
@@ -254,7 +286,10 @@ async function main() {
   timer.setEstimateProgress(duration)
   let snapshotFiles = []
   for (let time = 0; time < duration; time += step) {
-    let snapshotFile = join(snapshotDir, `${filename}-${time}.jpg`)
+    let snapshotFile = join(
+      snapshotDir,
+      `${filename}-${Number.isInteger(time) ? time.toFixed(1) : time}.jpg`,
+    )
     if (!existsSync(snapshotFile)) {
       await takeSnapshot({ inFile: videoFile, outFile: snapshotFile, time })
     }
@@ -264,34 +299,49 @@ async function main() {
   }
   let { width, height } = await getImageResolution(snapshotFiles[0])
 
-  let canvas = createCanvas(width, height)
-  let context = canvas.getContext('2d')
-  timer.next('detect caption region')
-  timer.setEstimateProgress(snapshotFiles.length)
-  let ys = new Array(height).fill(0)
-  for (let file of snapshotFiles) {
-    let image = await loadImage(file)
-    context.drawImage(image, 0, 0)
-    let imageData = context.getImageData(0, 0, image.width, image.height)
-    let offset = 0
-    for (let y = 0; y < image.height; y++) {
-      let sum = 0
-      for (let x = 0; x < image.width; x++) {
-        let r = imageData.data[offset++]
-        let g = imageData.data[offset++]
-        let b = imageData.data[offset++]
-        let a = imageData.data[offset++] / 255
-        let brightness = (r + g + b) / 3
-        sum += brightness * a
+  let averageFile = join(averageDir, `${filename}-average.jpg`)
+  if (!existsSync(averageFile)) {
+    let canvas = createCanvas(width, height)
+    let context = canvas.getContext('2d')
+    // y -> x -> [r, g, b, a]
+    let pixels = new Array(width * height * 4).fill(0)
+    let n = snapshotFiles.length
+    timer.next('detect caption region')
+    timer.setEstimateProgress(snapshotFiles.length)
+    for (let file of snapshotFiles) {
+      let image = await loadImage(file)
+      context.drawImage(image, 0, 0)
+      let data = context.getImageData(0, 0, image.width, image.height).data
+      for (let i = 0; i < data.length; i++) {
+        pixels[i] += data[i]
       }
-      ys[y] += sum / image.width
+      timer.tick()
     }
-    timer.tick()
+    for (let i = 0; i < pixels.length; i++) {
+      pixels[i] /= n
+    }
+    let imageData = new ImageData(width, height)
+    for (let i = 0; i < pixels.length; i++) {
+      let value = Math.round(pixels[i])
+      if (value < 0) value = 0
+      if (value > 255) value = 255
+      imageData.data[i] = value
+    }
+    context.putImageData(imageData, 0, 0)
+    writeFileSync(averageFile, canvas.toBuffer('image/jpeg'))
   }
-  for (let y = 0; y < height; y++) {
-    ys[y] /= snapshotFiles.length
-  }
-  let cropRegion = calculateCaptureRegion({ width, height, ys })
+  console.log({ averageFile })
+
+  let imageData = await loadImage(averageFile)
+  let canvas = createCanvas(imageData.width, imageData.height)
+  let context = canvas.getContext('2d')
+  context.drawImage(imageData, 0, 0)
+  let data = context.getImageData(0, 0, imageData.width, imageData.height).data
+  let cropRegion = calculateCaptureRegion({
+    width,
+    height,
+    data,
+  })
   console.log({ cropRegion })
 
   timer.next('crop caption')
