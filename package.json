@@ -12,6 +12,7 @@
     "dist"
   ],
   "scripts": {
+    "start": "ts-node src/index.ts",
     "test": "tsc --noEmit",
     "clean": "rimraf dist",
     "build": "rimraf dist && tsc -p . && rimraf dist/tsconfig.tsbuildinfo dist/*.test.d.ts dist/*.test.js dist/*.spec.d.ts dist/*.spec.js",
