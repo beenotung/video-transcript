@@ -320,6 +320,8 @@ async function main() {
     )
     if (!existsSync(snapshotFile)) {
       await takeSnapshot({ inFile: videoFile, outFile: snapshotFile, time })
+    } else {
+      timer.setEstimateProgress(duration - time)
     }
     snapshotFiles.push(snapshotFile)
 
@@ -398,6 +400,9 @@ async function main() {
         top: cropRegion.top,
         left: cropRegion.left,
       })
+    } else {
+      let index = snapshotFiles.indexOf(snapshotFile)
+      timer.setEstimateProgress(snapshotFiles.length - index)
     }
     croppedFiles.push(croppedFile)
     timer.tick()
