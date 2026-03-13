@@ -10,12 +10,14 @@ let snapshotDir = 'res/snapshots'
 let croppedDir = 'res/cropped'
 let resultDir = 'res/result'
 let averageDir = 'res/average'
+let statsDir = 'res/stats'
 
 mkdirSync(downloadsDir, { recursive: true })
 mkdirSync(snapshotDir, { recursive: true })
 mkdirSync(croppedDir, { recursive: true })
 mkdirSync(resultDir, { recursive: true })
 mkdirSync(averageDir, { recursive: true })
+mkdirSync(statsDir, { recursive: true })
 
 export async function downloadVideo(url: string) {
   var { stdout, stderr, code } = await spawnAndWait({
@@ -191,7 +193,7 @@ function calculateCaptureRegion(args: {
 }) {
   let { width, height, data } = args
 
-  let ys = new Array(height).fill(0)
+  let brightness = new Array(height).fill(0)
   let offset = 0
   for (let y = 0; y < height; y++) {
     let sum = 0
@@ -203,12 +205,12 @@ function calculateCaptureRegion(args: {
       let brightness = (r + g + b) / 3
       sum += brightness * a
     }
-    ys[y] = sum / width
+    brightness[y] = sum / width
   }
 
-  let delta = new Array(ys.length).fill(0)
-  for (let i = 1; i < ys.length; i++) {
-    delta[i] = ys[i] - ys[i - 1]
+  let delta = new Array(brightness.length).fill(0)
+  for (let i = 1; i < brightness.length; i++) {
+    delta[i] = brightness[i] - brightness[i - 1]
   }
 
   let maxDelta = Math.max(...delta)
@@ -232,7 +234,14 @@ function calculateCaptureRegion(args: {
     cropHeight,
     padding,
   })
-  return { width, height: cropHeight, top: startIndex, left: 0 }
+  return {
+    width,
+    height: cropHeight,
+    top: startIndex,
+    left: 0,
+    brightness,
+    delta,
+  }
 }
 
 async function cropImage(args: {
@@ -362,6 +371,18 @@ async function main() {
     data,
   })
   console.log({ cropRegion })
+
+  let statsFile = join(statsDir, `${filename}-stats.csv`)
+  if (!existsSync(statsFile)) {
+    await writeFile(
+      statsFile,
+      'y,brightness,delta\n' +
+        cropRegion.brightness
+          .map((brightness, y) => `${y},${brightness},${cropRegion.delta[y]}`)
+          .join('\n'),
+    )
+  }
+  console.log({ statsFile })
 
   timer.next('crop caption')
   timer.setEstimateProgress(snapshotFiles.length)
