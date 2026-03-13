@@ -8,7 +8,8 @@ A Node.js tool for downloading videos and generating transcripts with snapshots.
 
 1. **Download Video**: Downloads videos using `yt-dlp` from a video URL
 2. **Extract Snapshot**: Takes snapshots from the video using `ffmpeg`
-3. **Generate Transcript**: Creates an HTML transcript with cropped snapshot frames embedded
+3. **Auto-detect Caption Region**: Analyzes brightness gradients across averaged frames to detect the caption region—no manual position configuration needed
+4. **Generate Transcript**: Creates an HTML transcript with cropped snapshot frames embedded
 
 ## Usage
 
@@ -28,7 +29,8 @@ The script will:
 
 - Download the video to `downloads/` directory
 - Create snapshots in `snapshots/` directory
-- Crop transcript regions to `cropped/` directory
+- Auto-detect the caption region and save averaged frames to `average/` directory
+- Crop transcript regions to `cropped/` directory (using the auto-detected caption position)
 - Generate an HTML transcript file in `result/` directory
 
 ## Supported Platforms
