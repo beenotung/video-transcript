@@ -147,7 +147,18 @@ function inferFilenamePattern(args: { url: string }) {
   throw new Error(`Unsupported URL: ${url}`)
 }
 
+// e.g. remove playlist id in youtube url
+function cleanUrl(args: { url: string }) {
+  let url = new URL(args.url)
+  if (url.hostname.includes('youtube')) {
+    url.searchParams.delete('list')
+    url.searchParams.delete('index')
+  }
+  return url.href
+}
+
 async function getVideoFile(url: string) {
+  url = cleanUrl({ url })
   let pattern = inferFilenamePattern({ url })
   let filenames = await readdir(downloadsDir)
   let filename = filenames.find(name => name.includes(pattern))
