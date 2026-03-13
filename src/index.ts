@@ -372,7 +372,14 @@ async function main() {
     height,
     data,
   })
-  console.log({ cropRegion })
+  console.log({
+    cropRegion: {
+      width: cropRegion.width,
+      height: cropRegion.height,
+      top: cropRegion.top,
+      left: cropRegion.left,
+    },
+  })
 
   let statsFile = join(statsDir, `${filename}-stats.csv`)
   if (!existsSync(statsFile)) {
