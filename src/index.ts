@@ -61,6 +61,7 @@ export async function downloadVideo(url: string) {
     if (fileSizeText === '≈') {
       fileSizeText = parts[7].trim()
     }
+    fileSizeText = fileSizeText.replace('≈', '').trim()
     let fileSize = fileSizeText.length == 0 ? 0 : parseFileSize(fileSizeText)
     if (!Number.isFinite(fileSize)) continue
 
