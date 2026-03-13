@@ -5,7 +5,12 @@ import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { readdir, writeFile } from 'fs/promises'
 import { basename, join } from 'path'
 
-let paddingRatio = 0.75
+let multiLinePaddingRatio = 0.75
+let singleLinePaddingRatio = 0.25
+
+let paddingRatio = multiLinePaddingRatio
+
+let step = 0.5
 
 let downloadsDir = 'res/downloads'
 let snapshotDir = 'res/snapshots'
@@ -353,7 +358,6 @@ async function main() {
   console.log({ duration })
   if (!duration) throw new Error('Invalid duration')
 
-  let step = 0.5
   let timer = startTimer('takeSnapshot')
   let snapshotFiles = []
   let existingSnapshotFiles = await readdir(snapshotDir)
@@ -451,7 +455,15 @@ async function main() {
   let croppedFiles = []
   let newCrops = []
   for (let snapshotFile of snapshotFiles) {
-    let croppedFile = join(croppedDir, `${basename(snapshotFile)}-cropped.jpg`)
+    let croppedFile = join(
+      croppedDir,
+      [
+        basename(snapshotFile),
+        'cropped',
+        cropRegion.width + 'x' + cropRegion.height,
+        cropRegion.top + '_' + cropRegion.left,
+      ].join('-') + '.jpg',
+    )
     if (!existsSync(croppedFile)) {
       newCrops.push({ snapshotFile, croppedFile })
     }
