@@ -334,21 +334,30 @@ async function main() {
 
   let step = 0.5
   let timer = startTimer('takeSnapshot')
-  timer.setEstimateProgress(duration)
   let snapshotFiles = []
+  let existingSnapshotFiles = await readdir(snapshotDir)
+  existingSnapshotFiles = existingSnapshotFiles.map(file =>
+    join(snapshotDir, file),
+  )
+  let newSnapshots = []
   for (let time = 0; time < duration; time += step) {
     let snapshotFile = join(
       snapshotDir,
       `${filename}-${Number.isInteger(time) ? time.toFixed(1) : time}.jpg`,
     )
     if (!existsSync(snapshotFile)) {
-      await takeSnapshot({ inFile: videoFile, outFile: snapshotFile, time })
-    } else {
-      timer.setEstimateProgress(duration - time)
+      newSnapshots.push({ time, snapshotFile })
     }
     snapshotFiles.push(snapshotFile)
-
-    timer.tick(step)
+  }
+  timer.setEstimateProgress(newSnapshots.length)
+  for (let newSnapshot of newSnapshots) {
+    await takeSnapshot({
+      inFile: videoFile,
+      outFile: newSnapshot.snapshotFile,
+      time: newSnapshot.time,
+    })
+    timer.tick()
   }
   let { width, height } = await getImageResolution(snapshotFiles[0])
 
@@ -419,25 +428,26 @@ async function main() {
   timer.next('crop caption')
   timer.setEstimateProgress(snapshotFiles.length)
   let croppedFiles = []
+  let newCrops = []
   for (let snapshotFile of snapshotFiles) {
     let croppedFile = join(croppedDir, `${basename(snapshotFile)}-cropped.jpg`)
     if (!existsSync(croppedFile)) {
-      await cropImage({
-        inFile: snapshotFile,
-        outFile: croppedFile,
-        width: cropRegion.width,
-        height: cropRegion.height,
-        top: cropRegion.top,
-        left: cropRegion.left,
-      })
-    } else {
-      let index = snapshotFiles.indexOf(snapshotFile)
-      timer.setEstimateProgress(snapshotFiles.length - index)
+      newCrops.push({ snapshotFile, croppedFile })
     }
     croppedFiles.push(croppedFile)
+  }
+  timer.setEstimateProgress(newCrops.length)
+  for (let newCrop of newCrops) {
+    await cropImage({
+      inFile: newCrop.snapshotFile,
+      outFile: newCrop.croppedFile,
+      width: cropRegion.width,
+      height: cropRegion.height,
+      top: cropRegion.top,
+      left: cropRegion.left,
+    })
     timer.tick()
   }
-
   timer.end()
 
   let resultFile = join(resultDir, `${filename}.html`)
