@@ -1,14 +1,8 @@
 import { startTimer } from '@beenotung/tslib/timer'
 import { spawnAndWait } from '@beenotung/tslib/child_process'
 import { createCanvas, ImageData, loadImage } from 'canvas'
-import {
-  existsSync,
-  mkdirSync,
-  readdirSync,
-  readFileSync,
-  writeFile,
-  writeFileSync,
-} from 'fs'
+import { existsSync, mkdirSync, readFileSync } from 'fs'
+import { readdir, writeFile } from 'fs/promises'
 import { basename, join } from 'path'
 
 let downloadsDir = 'res/downloads'
@@ -119,12 +113,12 @@ function parseUnit(text: string) {
 
 async function downloadXHSVideo(url: string) {
   let id = new URL(url).pathname.split('/').pop()
-  let filename = readdirSync(downloadsDir).find(name =>
-    name.includes(`[${id}]`),
-  )
+  let filenames = await readdir(downloadsDir)
+  let filename = filenames.find(name => name.includes(`[${id}]`))
   if (!filename) {
     await downloadVideo(url)
-    filename = readdirSync(downloadsDir).find(name => name.includes(`[${id}]`))
+    filenames = await readdir(downloadsDir)
+    filename = filenames.find(name => name.includes(`[${id}]`))
   }
   if (!filename) throw new Error(`Video not found: ${url}`)
   let videoFile = join(downloadsDir, filename)
@@ -353,7 +347,7 @@ async function main() {
       imageData.data[i] = value
     }
     context.putImageData(imageData, 0, 0)
-    writeFileSync(averageFile, canvas.toBuffer('image/jpeg'))
+    await writeFile(averageFile, canvas.toBuffer('image/jpeg'))
   }
   console.log({ averageFile })
 
@@ -392,7 +386,7 @@ async function main() {
 
   let resultFile = join(resultDir, `${filename}.html`)
   let html = generateResultHTML({ filename, croppedFiles })
-  writeFileSync(resultFile, html)
+  await writeFile(resultFile, html)
   console.log({ resultFile })
 }
 
