@@ -1,5 +1,6 @@
 import { startTimer } from '@beenotung/tslib/timer'
 import { spawnAndWait } from '@beenotung/tslib/child_process'
+import { createCanvas, loadImage } from 'canvas'
 import {
   existsSync,
   mkdirSync,
@@ -177,6 +178,37 @@ async function getImageResolution(file: string) {
   return { width, height }
 }
 
+function calculateCaptureRegion(args: {
+  width: number
+  height: number
+  ys: number[]
+}) {
+  let { width, height, ys } = args
+  let delta = new Array(ys.length).fill(0)
+  for (let i = 1; i < ys.length; i++) {
+    delta[i] = ys[i] - ys[i - 1]
+  }
+  let maxDelta = Math.max(...delta)
+  let startIndex = delta.indexOf(maxDelta)
+  let rest = delta.slice(startIndex)
+  let minDelta = Math.min(...rest)
+  let endIndex = startIndex + rest.indexOf(minDelta)
+  let range = endIndex - startIndex
+  let padding = Math.floor(range * 0.1)
+  startIndex = Math.max(0, startIndex - padding)
+  endIndex = Math.min(height - 1, endIndex + padding)
+  let cropHeight = endIndex - startIndex + 1
+  console.log({
+    maxDelta,
+    minDelta,
+    startIndex,
+    endIndex,
+    cropHeight,
+    padding,
+  })
+  return { width, height: cropHeight, top: startIndex, left: 0 }
+}
+
 async function cropImage(args: {
   inFile: string
   outFile: string
@@ -216,36 +248,71 @@ async function main() {
   console.log({ duration })
   if (!duration) throw new Error('Invalid duration')
 
-  let time = duration / 2
-  let snapshotFile = join(snapshotDir, `${filename}-${time}.jpg`)
-  let { width, height } = await getImageResolution(snapshotFile)
-
   // TODO dynamically determine the step, or deduplicate the result based on OCR result
-  let step = 1.5
+  let step = 0.5
   let timer = startTimer('takeSnapshot')
   timer.setEstimateProgress(duration)
-  let croppedFiles = []
+  let snapshotFiles = []
   for (let time = 0; time < duration; time += step) {
     let snapshotFile = join(snapshotDir, `${filename}-${time}.jpg`)
     if (!existsSync(snapshotFile)) {
       await takeSnapshot({ inFile: videoFile, outFile: snapshotFile, time })
     }
+    snapshotFiles.push(snapshotFile)
 
-    let croppedFile = join(croppedDir, `${filename}-${time}-cropped.jpg`)
+    timer.tick(step)
+  }
+  let { width, height } = await getImageResolution(snapshotFiles[0])
+
+  let canvas = createCanvas(width, height)
+  let context = canvas.getContext('2d')
+  timer.next('detect caption region')
+  timer.setEstimateProgress(snapshotFiles.length)
+  let ys = new Array(height).fill(0)
+  for (let file of snapshotFiles) {
+    let image = await loadImage(file)
+    context.drawImage(image, 0, 0)
+    let imageData = context.getImageData(0, 0, image.width, image.height)
+    let offset = 0
+    for (let y = 0; y < image.height; y++) {
+      let sum = 0
+      for (let x = 0; x < image.width; x++) {
+        let r = imageData.data[offset++]
+        let g = imageData.data[offset++]
+        let b = imageData.data[offset++]
+        let a = imageData.data[offset++] / 255
+        let brightness = (r + g + b) / 3
+        sum += brightness * a
+      }
+      ys[y] += sum / image.width
+    }
+    timer.tick()
+  }
+  for (let y = 0; y < height; y++) {
+    ys[y] /= snapshotFiles.length
+  }
+  let cropRegion = calculateCaptureRegion({ width, height, ys })
+  console.log({ cropRegion })
+
+  timer.next('crop caption')
+  timer.setEstimateProgress(snapshotFiles.length)
+  let croppedFiles = []
+  for (let snapshotFile of snapshotFiles) {
+    let croppedFile = join(croppedDir, `${basename(snapshotFile)}-cropped.jpg`)
     if (!existsSync(croppedFile)) {
       await cropImage({
         inFile: snapshotFile,
         outFile: croppedFile,
-        width: width,
-        height: 1018 - 978,
-        top: 978,
-        left: 0,
+        width: cropRegion.width,
+        height: cropRegion.height,
+        top: cropRegion.top,
+        left: cropRegion.left,
       })
     }
     croppedFiles.push(croppedFile)
-
-    timer.tick(step)
+    timer.tick()
   }
+
   timer.end()
 
   let html = readFileSync('template/result.html', 'utf-8')
