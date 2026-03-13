@@ -269,6 +269,32 @@ async function cropImage(args: {
   }
 }
 
+let htmlTemplate = readFileSync('template/result.html', 'utf-8')
+
+function generateResultHTML(args: {
+  filename: string
+  croppedFiles: string[]
+}) {
+  let { filename, croppedFiles } = args
+  let html = htmlTemplate
+    .replace('<title></title>', `<title>Transcript of ${filename}</title>`)
+    .replace(
+      '<body></body>',
+      `<body>${croppedFiles
+        .map(file => {
+          let url =
+            '/' +
+            file
+              .split('/')
+              .map(s => encodeURIComponent(s))
+              .join('/')
+          return `<img src="${url}" />`
+        })
+        .join('\n')}</body>`,
+    )
+  return html
+}
+
 async function main() {
   let url =
     'https://www.xiaohongshu.com/discovery/item/69a45992000000001a032111?xsec_token=CBQNYbf2u0p7fnqO5AxjG02uCTmVftf1gvK-Kj1_22B38%3D'
@@ -364,26 +390,8 @@ async function main() {
 
   timer.end()
 
-  let html = readFileSync('template/result.html', 'utf-8')
-  html = html.replace(
-    '<title></title>',
-    `<title>Transcript of ${filename}</title>`,
-  )
-  html = html.replace(
-    '<body></body>',
-    `<body>${croppedFiles
-      .map(file => {
-        let url =
-          '/' +
-          file
-            .split('/')
-            .map(s => encodeURIComponent(s))
-            .join('/')
-        return `<img src="${url}" />`
-      })
-      .join('\n')}</body>`,
-  )
   let resultFile = join(resultDir, `${filename}.html`)
+  let html = generateResultHTML({ filename, croppedFiles })
   writeFileSync(resultFile, html)
   console.log({ resultFile })
 }
