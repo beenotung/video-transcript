@@ -257,8 +257,13 @@ async function main() {
     '<body></body>',
     `<body>${croppedFiles
       .map(file => {
-        file = file.replaceAll('#', '%23')
-        return `<img src="/${file}" />`
+        let url =
+          '/' +
+          file
+            .split('/')
+            .map(s => encodeURIComponent(s))
+            .join('/')
+        return `<img src="${url}" />`
       })
       .join('\n')}</body>`,
   )
