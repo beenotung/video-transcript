@@ -10,3 +10,6 @@ dist/
 .DS_Store
 Thumbs.db
 downloads/
+snapshots/
+cropped/
+result/

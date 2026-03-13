@@ -1,9 +1,23 @@
+import { startTimer } from '@beenotung/tslib/timer'
 import { spawnAndWait } from '@beenotung/tslib/child_process'
-import { mkdirSync, readdirSync } from 'fs'
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from 'fs'
+import { basename, join } from 'path'
 
 let downloadsDir = 'downloads'
+let snapshotDir = 'snapshots'
+let croppedDir = 'cropped'
+let resultDir = 'result'
 
 mkdirSync(downloadsDir, { recursive: true })
+mkdirSync(snapshotDir, { recursive: true })
+mkdirSync(croppedDir, { recursive: true })
+mkdirSync(resultDir, { recursive: true })
 
 export async function downloadVideo(url: string) {
   var { stdout, stderr, code } = await spawnAndWait({
@@ -98,14 +112,159 @@ async function downloadXHSVideo(url: string) {
   )
   if (!filename) {
     await downloadVideo(url)
+    filename = readdirSync(downloadsDir).find(name => name.includes(`[${id}]`))
   }
-  return { id, filename, url }
+  if (!filename) throw new Error(`Video not found: ${url}`)
+  let videoFile = join(downloadsDir, filename)
+  return { id, filename, url, videoFile }
+}
+
+async function getVideoDuration(file: string) {
+  let { stdout, stderr, code } = await spawnAndWait({
+    cmd: 'ffprobe',
+    args: [
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration',
+      '-of',
+      'default=noprint_wrappers=1:nokey=1',
+      file,
+    ],
+  })
+  if (code !== 0) {
+    console.error({ stdout, stderr, code })
+    throw new Error('Failed to get video duration')
+  }
+  return parseFloat(stdout)
+}
+
+async function takeSnapshot(args: {
+  inFile: string
+  outFile: string
+  time: number
+}) {
+  let { inFile, outFile, time } = args
+  let { stdout, stderr, code } = await spawnAndWait({
+    cmd: 'ffmpeg',
+    args: [
+      '-y',
+      '-i',
+      inFile,
+      '-v',
+      'error',
+      '-ss',
+      time.toString(),
+      '-frames:v',
+      '1',
+      outFile,
+    ],
+  })
+  if (code !== 0) {
+    console.error({ stdout, stderr, code })
+    throw new Error('Failed to take snapshot')
+  }
+}
+
+async function getImageResolution(file: string) {
+  var { stdout, stderr, code } = await spawnAndWait({
+    cmd: 'identify',
+    args: ['-format', '%wx%h', file],
+  })
+  let parts = stdout.split('x')
+  let width = +parts[0]
+  let height = +parts[1]
+  return { width, height }
+}
+
+async function cropImage(args: {
+  inFile: string
+  outFile: string
+  width: number
+  height: number
+  top: number
+  left: number
+}) {
+  let { inFile, outFile, width, height, top, left } = args
+  var { stdout, stderr, code } = await spawnAndWait({
+    cmd: 'ffmpeg',
+    args: [
+      '-y',
+      '-i',
+      inFile,
+      '-v',
+      'error',
+      '-filter:v',
+      `crop=${width}:${height}:${left}:${top}`,
+      outFile,
+    ],
+  })
+  if (code !== 0) {
+    console.error({ stdout, stderr, code })
+    throw new Error('Failed to crop image')
+  }
 }
 
 async function main() {
   let url =
     'https://www.xiaohongshu.com/discovery/item/69a45992000000001a032111?xsec_token=CBQNYbf2u0p7fnqO5AxjG02uCTmVftf1gvK-Kj1_22B38%3D'
-  var { id, filename } = await downloadXHSVideo(url)
+
+  var { filename, videoFile } = await downloadXHSVideo(url)
+  console.log({ videoFile })
+
+  let duration = await getVideoDuration(videoFile)
+  console.log({ duration })
+  if (!duration) throw new Error('Invalid duration')
+
+  let time = duration / 2
+  let snapshotFile = join(snapshotDir, `${filename}-${time}.jpg`)
+  let { width, height } = await getImageResolution(snapshotFile)
+
+  // TODO dynamically determine the step, or deduplicate the result based on OCR result
+  let step = 1.5
+  let timer = startTimer('takeSnapshot')
+  timer.setEstimateProgress(duration)
+  let croppedFiles = []
+  for (let time = 0; time < duration; time += step) {
+    let snapshotFile = join(snapshotDir, `${filename}-${time}.jpg`)
+    if (!existsSync(snapshotFile)) {
+      await takeSnapshot({ inFile: videoFile, outFile: snapshotFile, time })
+    }
+
+    let croppedFile = join(croppedDir, `${filename}-${time}-cropped.jpg`)
+    if (!existsSync(croppedFile)) {
+      await cropImage({
+        inFile: snapshotFile,
+        outFile: croppedFile,
+        width: width,
+        height: 1018 - 978,
+        top: 978,
+        left: 0,
+      })
+    }
+    croppedFiles.push(croppedFile)
+
+    timer.tick(step)
+  }
+  timer.end()
+
+  let html = readFileSync('template/result.html', 'utf-8')
+  html = html.replace(
+    '<title></title>',
+    `<title>Transcript of ${filename}</title>`,
+  )
+  html = html.replace(
+    '<body></body>',
+    `<body>${croppedFiles
+      .map(file => {
+        file = file.replaceAll('#', '%23')
+        return `<img src="/${file}" />`
+      })
+      .join('\n')}</body>`,
+  )
+  let resultFile = join(resultDir, `${filename}.html`)
+  writeFileSync(resultFile, html)
+  console.log({ resultFile })
 }
 
 main().catch(error => {
