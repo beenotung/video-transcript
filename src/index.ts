@@ -124,18 +124,41 @@ function parseUnit(text: string) {
   }
 }
 
-async function downloadXHSVideo(url: string) {
-  let id = new URL(url).pathname.split('/').pop()
+function inferFilenamePattern(args: { url: string }) {
+  let url = new URL(args.url)
+  if (url.hostname == 'www.xiaohongshu.com') {
+    // e.g. 'https://www.xiaohongshu.com/discovery/item/xxxxxxx?xsec_token=xxxxx'
+    let id = url.pathname
+      .split('/')
+      .pop()!
+      .replace(/^[0-9]+_/, '')
+    return `[${id}]`
+  }
+  if (url.hostname.includes('youtube')) {
+    // e.g. 'https://www.youtube.com/watch?v=xxxxxx'
+    let id = url.searchParams.get('v')!
+    return `[${id}]`
+  }
+  if (url.hostname == 'youtu.be') {
+    // e.g. 'https://youtu.be/xxxxx?si=xxxx'
+    let id = url.pathname.split('/').pop()!
+    return `[${id}]`
+  }
+  throw new Error(`Unsupported URL: ${url}`)
+}
+
+async function getVideoFile(url: string) {
+  let pattern = inferFilenamePattern({ url })
   let filenames = await readdir(downloadsDir)
-  let filename = filenames.find(name => name.includes(`[${id}]`))
+  let filename = filenames.find(name => name.includes(pattern))
   if (!filename) {
     await downloadVideo(url)
     filenames = await readdir(downloadsDir)
-    filename = filenames.find(name => name.includes(`[${id}]`))
+    filename = filenames.find(name => name.includes(pattern))
   }
   if (!filename) throw new Error(`Video not found: ${url}`)
   let videoFile = join(downloadsDir, filename)
-  return { id, filename, url, videoFile }
+  return { pattern, filename, url, videoFile }
 }
 
 async function getVideoDuration(file: string) {
@@ -355,7 +378,7 @@ async function main() {
   let url =
     'https://www.xiaohongshu.com/discovery/item/69a45992000000001a032111?xsec_token=CBQNYbf2u0p7fnqO5AxjG02uCTmVftf1gvK-Kj1_22B38%3D'
 
-  var { filename, videoFile } = await downloadXHSVideo(url)
+  var { filename, videoFile } = await getVideoFile(url)
   console.log({ videoFile })
 
   let duration = await getVideoDuration(videoFile)
