@@ -405,6 +405,9 @@ async function main() {
   )
   let newSnapshots = []
   for (let time = 0; time < duration; time += step) {
+    if (duration - time < 0.1) {
+      time = duration - 0.1
+    }
     let snapshotFile = join(
       snapshotDir,
       `${filename}-${Number.isInteger(time) ? time.toFixed(1) : time}.jpg`,
