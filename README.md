@@ -27,11 +27,11 @@ npx ts-node src/index.ts
 
 The script will:
 
-- Download the video to `downloads/` directory
-- Create snapshots in `snapshots/` directory
-- Auto-detect the caption region and save averaged frames to `average/` directory
-- Crop transcript regions to `cropped/` directory (using the auto-detected caption position)
-- Generate an HTML transcript file in `result/` directory
+- Download the video to `res/downloads/` directory
+- Create snapshots in `res/snapshots/` directory
+- Auto-detect the caption region and save averaged frames to `res/average/` directory
+- Crop transcript regions to `res/cropped/` directory (using the auto-detected caption position)
+- Generate an HTML transcript file in `res/result/` directory
 
 ## Supported Platforms
 
