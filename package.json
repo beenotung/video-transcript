@@ -27,7 +27,7 @@
     "typescript": "^5.9.3"
   },
   "dependencies": {
-    "@beenotung/tslib": "^24.22.0",
+    "@beenotung/tslib": "^24.23.0",
     "canvas": "^3.2.1"
   },
   "pnpm": {
