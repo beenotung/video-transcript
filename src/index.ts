@@ -1,6 +1,11 @@
 import { startTimer } from '@beenotung/tslib/timer'
 import { spawnAndWait } from '@beenotung/tslib/child_process'
-import { createCanvas, ImageData, loadImage } from 'canvas'
+import {
+  createCanvas,
+  ImageData,
+  loadImage,
+  CanvasRenderingContext2D,
+} from 'canvas'
 import { existsSync, mkdirSync, readFileSync } from 'fs'
 import { readdir, writeFile } from 'fs/promises'
 import { basename, join } from 'path'
@@ -18,6 +23,7 @@ let croppedDir = 'res/cropped'
 let resultDir = 'res/result'
 let averageDir = 'res/average'
 let statsDir = 'res/stats'
+let heatmapDir = 'res/heatmap'
 
 mkdirSync(downloadsDir, { recursive: true })
 mkdirSync(snapshotDir, { recursive: true })
@@ -25,6 +31,7 @@ mkdirSync(croppedDir, { recursive: true })
 mkdirSync(resultDir, { recursive: true })
 mkdirSync(averageDir, { recursive: true })
 mkdirSync(statsDir, { recursive: true })
+mkdirSync(heatmapDir, { recursive: true })
 
 export async function downloadVideo(url: string) {
   var { stdout, stderr, code } = await spawnAndWait({
@@ -386,6 +393,16 @@ function generateResultHTML(args: {
   return html
 }
 
+async function getImageData(args: {
+  context: CanvasRenderingContext2D
+  file: string
+}) {
+  let { context, file } = args
+  let image = await loadImage(file)
+  context.drawImage(image, 0, 0)
+  return context.getImageData(0, 0, image.width, image.height)
+}
+
 async function main() {
   let url =
     'https://www.xiaohongshu.com/discovery/item/69a45992000000001a032111?xsec_token=CBQNYbf2u0p7fnqO5AxjG02uCTmVftf1gvK-Kj1_22B38%3D'
@@ -461,15 +478,97 @@ async function main() {
   }
   console.log({ averageFile })
 
-  let imageData = await loadImage(averageFile)
-  let canvas = createCanvas(imageData.width, imageData.height)
+  let canvas = createCanvas(width, height)
   let context = canvas.getContext('2d')
-  context.drawImage(imageData, 0, 0)
-  let data = context.getImageData(0, 0, imageData.width, imageData.height).data
+  let averageImageData = (await getImageData({ context, file: averageFile }))
+    .data
+
+  let heatmapFile = join(heatmapDir, `${filename}-heatmap-${step}.png`)
+  if (!existsSync(heatmapFile)) {
+    let averageBrightness = new Array(height)
+      .fill(0)
+      .map(() => new Array(width).fill(0))
+    let offset = 0
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let r = averageImageData[offset++]
+        let g = averageImageData[offset++]
+        let b = averageImageData[offset++]
+        let a = averageImageData[offset++] / 255
+        let brightness = ((r + g + b) / 3) * a
+        averageBrightness[y][x] = brightness
+      }
+    }
+    timer.next('scan snapshots for heatmap')
+    timer.setEstimateProgress(snapshotFiles.length)
+    let diffs = new Array(height).fill(0).map(() => new Array(width).fill(0))
+    for (let snapshotFile of snapshotFiles) {
+      let snapshotImageData = (
+        await getImageData({
+          context,
+          file: snapshotFile,
+        })
+      ).data
+      offset = 0
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          let r = snapshotImageData[offset++]
+          let g = snapshotImageData[offset++]
+          let b = snapshotImageData[offset++]
+          let a = snapshotImageData[offset++] / 255
+          let brightness = ((r + g + b) / 3) * a
+          diffs[y][x] += brightness - averageBrightness[y][x]
+        }
+      }
+      timer.tick()
+    }
+    timer.next('normalize heatmap')
+    let maxDiff = 0
+    let minDiff = 0
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let diff = diffs[y][x] / snapshotFiles.length
+        maxDiff = Math.max(maxDiff, diff)
+        minDiff = Math.min(minDiff, diff)
+        diffs[y][x] = diff
+      }
+    }
+    console.log('heatmap', { maxDiff, minDiff })
+    let diffRange = Math.max(Math.abs(maxDiff), Math.abs(minDiff))
+    timer.next('generate heatmap')
+    let heatmapData = new ImageData(width, height)
+    offset = 0
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let diff = diffs[y][x]
+        let value = diff / diffRange
+        let r = 0
+        let g = 0
+        let b = 0
+        let a = 255
+        if (value > 0) {
+          r = Math.round(value * 255)
+        } else {
+          b = Math.round(-value * 255)
+        }
+        heatmapData.data[offset++] = r
+        heatmapData.data[offset++] = g
+        heatmapData.data[offset++] = b
+        heatmapData.data[offset++] = a
+      }
+    }
+    context.putImageData(heatmapData, 0, 0)
+    await writeFile(
+      join(heatmapDir, `${filename}-heatmap-${step}.png`),
+      canvas.toBuffer('image/png'),
+    )
+  }
+  console.log({ heatmapFile })
+
   let cropRegion = calculateCaptureRegion({
     width,
     height,
-    data,
+    data: averageImageData,
   })
   console.log({
     cropRegion: {
