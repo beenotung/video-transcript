@@ -566,6 +566,69 @@ async function main() {
   }
   console.log({ averageHeatmapFile })
 
+  timer.next('generate snapshot heatmaps')
+  let newSnapshotHeatmapFiles = []
+  for (let snapshotFile of snapshotFiles) {
+    let snapshotHeatmapFile = join(
+      snapshotHeatmapDir,
+      `${basename(snapshotFile)}-${step}.png`,
+    )
+    if (!existsSync(snapshotHeatmapFile)) {
+      newSnapshotHeatmapFiles.push({ snapshotFile, snapshotHeatmapFile })
+    }
+  }
+  timer.setEstimateProgress(newSnapshotHeatmapFiles.length)
+  for (let { snapshotFile, snapshotHeatmapFile } of newSnapshotHeatmapFiles) {
+    let snapshotImageData = (
+      await getImageData({
+        context,
+        file: snapshotFile,
+      })
+    ).data
+    let diffs = new Array(height).fill(0).map(() => new Array(width).fill(0))
+    let maxDiff = 0
+    let minDiff = 0
+    let offset = 0
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let r = snapshotImageData[offset++]
+        let g = snapshotImageData[offset++]
+        let b = snapshotImageData[offset++]
+        let a = snapshotImageData[offset++] / 255
+        let brightness = ((r + g + b) / 3) * a
+        let diff = brightness - averageBrightness[y][x]
+        maxDiff = Math.max(maxDiff, diff)
+        minDiff = Math.min(minDiff, diff)
+        diffs[y][x] = diff
+      }
+    }
+    let diffRange = Math.max(Math.abs(maxDiff), Math.abs(minDiff))
+    let heatmapData = new ImageData(width, height)
+    offset = 0
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let diff = diffs[y][x]
+        let value = diff / diffRange
+        let r = 0
+        let g = 0
+        let b = 0
+        let a = 255
+        if (value > 0) {
+          r = Math.round(value * 255)
+        } else {
+          b = Math.round(-value * 255)
+        }
+        heatmapData.data[offset++] = r
+        heatmapData.data[offset++] = g
+        heatmapData.data[offset++] = b
+        heatmapData.data[offset++] = a
+      }
+    }
+    context.putImageData(heatmapData, 0, 0)
+    await writeFile(snapshotHeatmapFile, canvas.toBuffer('image/png'))
+    timer.tick()
+  }
+
   let cropRegion = calculateCaptureRegion({
     width,
     height,
