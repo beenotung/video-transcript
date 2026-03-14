@@ -25,6 +25,7 @@ let averageDir = 'res/average'
 let statsDir = 'res/stats'
 let averageHeatmapDir = 'res/average-heatmap'
 let snapshotHeatmapDir = 'res/snapshot-heatmap'
+let snapshotDiffDir = 'res/snapshot-diff'
 
 mkdirSync(downloadsDir, { recursive: true })
 mkdirSync(snapshotDir, { recursive: true })
@@ -34,6 +35,7 @@ mkdirSync(averageDir, { recursive: true })
 mkdirSync(statsDir, { recursive: true })
 mkdirSync(averageHeatmapDir, { recursive: true })
 mkdirSync(snapshotHeatmapDir, { recursive: true })
+mkdirSync(snapshotDiffDir, { recursive: true })
 
 export async function downloadVideo(url: string) {
   var { stdout, stderr, code } = await spawnAndWait({
@@ -626,6 +628,62 @@ async function main() {
     }
     context.putImageData(heatmapData, 0, 0)
     await writeFile(snapshotHeatmapFile, canvas.toBuffer('image/png'))
+    timer.tick()
+  }
+
+  timer.next('generate snapshot diffs')
+  let newSnapshotDiffFiles = []
+  for (let snapshotFile of snapshotFiles) {
+    let snapshotDiffFile = join(
+      snapshotDiffDir,
+      `${basename(snapshotFile)}-${step}.jpg`,
+    )
+    if (!existsSync(snapshotDiffFile)) {
+      newSnapshotDiffFiles.push({ snapshotFile, snapshotDiffFile })
+    }
+  }
+  timer.setEstimateProgress(newSnapshotDiffFiles.length)
+  for (let { snapshotFile, snapshotDiffFile } of newSnapshotDiffFiles) {
+    let snapshotImageData = (
+      await getImageData({
+        context,
+        file: snapshotFile,
+      })
+    ).data
+    let diffs = new Array(height).fill(0).map(() => new Array(width).fill(0))
+    let maxDiff = 0
+    let minDiff = 0
+    let offset = 0
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let r = snapshotImageData[offset++]
+        let g = snapshotImageData[offset++]
+        let b = snapshotImageData[offset++]
+        let a = snapshotImageData[offset++] / 255
+        let brightness = ((r + g + b) / 3) * a
+        let diff = brightness - averageBrightness[y][x]
+        maxDiff = Math.max(maxDiff, diff)
+        minDiff = Math.min(minDiff, diff)
+        diffs[y][x] = diff
+      }
+    }
+    let diffRange = Math.max(Math.abs(maxDiff), Math.abs(minDiff))
+    let imageData = new ImageData(width, height)
+    offset = 0
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        let diff = diffs[y][x]
+        let value = diff / diffRange
+        let a = Math.abs(value) * 255
+        imageData.data[offset + 0] = snapshotImageData[offset + 0] // r
+        imageData.data[offset + 1] = snapshotImageData[offset + 1] // g
+        imageData.data[offset + 2] = snapshotImageData[offset + 2] // b
+        imageData.data[offset + 3] = a // a
+        offset += 4
+      }
+    }
+    context.putImageData(imageData, 0, 0)
+    await writeFile(snapshotDiffFile, canvas.toBuffer('image/jpeg'))
     timer.tick()
   }
 
