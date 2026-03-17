@@ -53,8 +53,8 @@ export async function downloadVideo(url: string) {
     // e.g. '0  mp4 720x1280    30  2 |  15.39MiB 1022k http  | h264   960k aac    56k'
     let parts = line.split(' ').filter(part => part.length > 0)
 
-    let id = +parts[0]
-    if (!Number.isInteger(id)) continue
+    let id = parts[0]
+    if (!id) continue
 
     let format = parts[1]
     if (!isVideoFormat(format)) continue
