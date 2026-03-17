@@ -628,6 +628,7 @@ async function main() {
         diffs[y][x] = diff
       }
     }
+    console.log()
     console.log('average heatmap diff range:', { max: maxDiff, min: minDiff })
     let diffRange = Math.max(Math.abs(maxDiff), Math.abs(minDiff))
     timer.next('generate average heatmap')
