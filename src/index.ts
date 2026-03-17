@@ -50,6 +50,8 @@ export async function downloadVideo(url: string) {
   let formats = []
   for (let line of lines) {
     // e.g. 'ID EXT RESOLUTION FPS CH |  FILESIZE   TBR PROTO | VCODEC  VBR ACODEC ABR'
+    // but the FPS and CH are not always present
+    // e.g. 'ID EXT RESOLUTION |  FILESIZE  TBR PROTO | VCODEC         VBR ACODEC     ABR ASR MORE INFO'
     // e.g. '0  mp4 720x1280    30  2 |  15.39MiB 1022k http  | h264   960k aac    56k'
     let parts = line.split(' ').filter(part => part.length > 0)
 
@@ -62,29 +64,17 @@ export async function downloadVideo(url: string) {
     let resolution = parseResolution(parts[2])
     if (!resolution || !resolution.width || !resolution.height) continue
 
-    let fps = +parts[3]
-    if (!Number.isInteger(fps)) continue
-
-    let ch = +parts[4]
-    if (!Number.isInteger(ch)) continue
-
-    let fileSizeText = parts[6].trim()
-    if (fileSizeText === '≈' || fileSizeText === '~') {
-      fileSizeText = parts[7].trim()
-    }
-    fileSizeText = fileSizeText.replace('≈', '').replace('~', '').trim()
-    let fileSize = fileSizeText.length == 0 ? 0 : parseFileSize(fileSizeText)
-    if (!Number.isFinite(fileSize)) continue
+    let fileSize = findFileSize(parts)
+    if (!fileSize || !Number.isFinite(fileSize)) continue
 
     formats.push({
       id,
       format,
       resolution,
-      fps,
-      ch,
       fileSize,
     })
   }
+  console.dir({ formats }, { depth: 20 })
   formats.sort((a, b) => a.fileSize - b.fileSize)
   let format = formats[0]
   if (!format) {
@@ -116,7 +106,22 @@ function parseResolution(text: string) {
   return { width, height }
 }
 
+function findFileSize(parts: string[]) {
+  for (let part of parts) {
+    try {
+      let size = parseFileSize(part)
+      if (size && Number.isFinite(size)) {
+        return size
+      }
+    } catch (error) {
+      continue
+    }
+  }
+  return null
+}
+
 function parseFileSize(text: string) {
+  text = text.replace('≈', '').replace('~', '').trim()
   let value = parseFloat(text)
   let unit = text.slice(value.toString().length)
   return value * parseUnit(unit)
