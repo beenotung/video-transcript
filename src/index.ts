@@ -7,7 +7,7 @@ import {
   CanvasRenderingContext2D,
 } from 'canvas'
 import { existsSync, mkdirSync, readFileSync } from 'fs'
-import { readdir, writeFile } from 'fs/promises'
+import { readdir, rename, unlink, writeFile } from 'fs/promises'
 import { basename, join } from 'path'
 
 let multiLinePaddingRatio = 0.75
@@ -258,6 +258,68 @@ async function takeSnapshot(args: {
   }
 }
 
+let batchCounter = 0
+function getBatchPrefix() {
+  batchCounter++
+  return `batch_${Date.now()}_${batchCounter}_`
+}
+
+/** Take multiple snapshots in a single ffmpeg run (one decode pass, one process). */
+async function takeSnapshotsBatch(args: {
+  inFile: string
+  snapshots: Array<{ time: number; outFile: string }>
+  onProgress?: () => void
+}) {
+  let { inFile, snapshots, onProgress } = args
+  if (snapshots.length === 0) return
+  // Small window so at most one frame per timestamp (avoid 2+ at 30fps+)
+  let window = 0.001
+  let selectTerms = snapshots
+    .map(({ time }) => `between(t\\,${time}\\,${time + window})`)
+    .join('+')
+  let prefix = getBatchPrefix()
+  let outPattern = join(snapshotDir, prefix + '%04d.jpg')
+  let { stdout, stderr, code } = await spawnAndWait({
+    cmd: 'ffmpeg',
+    args: [
+      '-y',
+      '-i',
+      inFile,
+      '-v',
+      'error',
+      '-vf',
+      `select='${selectTerms}'`,
+      '-vsync',
+      '0',
+      '-q:v',
+      '2',
+      outPattern,
+    ],
+  })
+  if (code !== 0) {
+    console.error({ stdout, stderr, code })
+    throw new Error('Failed to take snapshots batch')
+  }
+  for (let i = 0; i < snapshots.length; i++) {
+    let batchPath = join(
+      snapshotDir,
+      prefix + (i + 1).toString().padStart(4, '0') + '.jpg',
+    )
+    if (!existsSync(batchPath)) {
+      throw new Error(`Batch path not found: ${batchPath}`)
+    }
+    await rename(batchPath, snapshots[i].outFile)
+    onProgress?.()
+  }
+  // Remove any extra frames ffmpeg produced (e.g. from overlapping windows)
+  let files = await readdir(snapshotDir)
+  for (let name of files) {
+    if (name.startsWith(prefix) && name.endsWith('.jpg')) {
+      await unlink(join(snapshotDir, name))
+    }
+  }
+}
+
 async function getImageResolution(file: string) {
   var { stdout, stderr, code } = await spawnAndWait({
     cmd: 'identify',
@@ -466,14 +528,14 @@ async function main() {
     snapshotFiles.push(snapshotFile)
   }
   timer.setEstimateProgress(newSnapshots.length)
-  for (let newSnapshot of newSnapshots) {
-    await takeSnapshot({
-      inFile: videoFile,
-      outFile: newSnapshot.snapshotFile,
-      time: newSnapshot.time,
-    })
-    timer.tick()
-  }
+  await takeSnapshotsBatch({
+    inFile: videoFile,
+    snapshots: newSnapshots.map(({ time, snapshotFile }) => ({
+      time,
+      outFile: snapshotFile,
+    })),
+    onProgress: () => timer.tick(),
+  })
   let { width, height } = await getImageResolution(snapshotFiles[0])
 
   let averageFile = join(averageDir, `${filename}-average-${step}.jpg`)
