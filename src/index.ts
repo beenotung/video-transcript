@@ -162,6 +162,11 @@ function inferFilenamePattern(args: { url: string }) {
     let id = url.pathname.split('/').pop()!
     return `[${id}]`
   }
+  if (url.hostname == 'm.facebook.com') {
+    // e.g. 'https://m.facebook.com/watch/?v=xxxxx'
+    let id = url.searchParams.get('v')!
+    return `[${id}]`
+  }
   throw new Error(`Unsupported URL: ${url}`)
 }
 
