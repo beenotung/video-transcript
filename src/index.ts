@@ -659,6 +659,7 @@ async function main() {
     context.putImageData(heatmapData, 0, 0)
     await writeFile(averageHeatmapFile, canvas.toBuffer('image/png'))
   }
+  console.log()
   console.log({ averageHeatmapFile })
 
   timer.next('generate snapshot heatmaps')
@@ -785,6 +786,7 @@ async function main() {
     height,
     data: averageImageData,
   })
+  console.log()
   console.log({
     cropRegion: {
       width: cropRegion.width,
