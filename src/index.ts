@@ -60,7 +60,7 @@ export async function downloadVideo(url: string) {
     if (!isVideoFormat(format)) continue
 
     let resolution = parseResolution(parts[2])
-    if (!resolution.width || !resolution.height) continue
+    if (!resolution || !resolution.width || !resolution.height) continue
 
     let fps = +parts[3]
     if (!Number.isInteger(fps)) continue
@@ -108,6 +108,7 @@ function isVideoFormat(format: string) {
 }
 
 function parseResolution(text: string) {
+  if (text === 'unknown') return null
   // e.g. '720x1280'
   let parts = text.split('x')
   let width = +parts[0]
