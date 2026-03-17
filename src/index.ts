@@ -371,7 +371,7 @@ function tryFilter<T>(xs: T[], predicate: (x: T) => boolean): T[] {
   return xs
 }
 
-function calculateCaptureRegion(args: {
+function calculateCaptionRegion(args: {
   // y -> x -> [r, g, b, a]
   data: number[] | ImageData['data']
   width: number
@@ -780,7 +780,7 @@ async function main() {
     timer.tick()
   }
 
-  let cropRegion = calculateCaptureRegion({
+  let cropRegion = calculateCaptionRegion({
     width,
     height,
     data: averageImageData,
