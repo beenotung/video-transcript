@@ -69,10 +69,10 @@ export async function downloadVideo(url: string) {
     if (!Number.isInteger(ch)) continue
 
     let fileSizeText = parts[6].trim()
-    if (fileSizeText === '≈') {
+    if (fileSizeText === '≈' || fileSizeText === '~') {
       fileSizeText = parts[7].trim()
     }
-    fileSizeText = fileSizeText.replace('≈', '').trim()
+    fileSizeText = fileSizeText.replace('≈', '').replace('~', '').trim()
     let fileSize = fileSizeText.length == 0 ? 0 : parseFileSize(fileSizeText)
     if (!Number.isFinite(fileSize)) continue
 
