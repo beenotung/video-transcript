@@ -395,7 +395,10 @@ function calculateCaptureRegion(args: {
   }
 
   let delta = new Array(brightness.length).fill(0)
-  for (let i = 1; i < brightness.length; i++) {
+  // skip top region in the screen
+  // TODO detect title from upper/middle part, or maybe just use first frame as cover
+  let skipTop = Math.floor(height * 0.4)
+  for (let i = skipTop; i < brightness.length; i++) {
     delta[i] = brightness[i] - brightness[i - 1]
   }
   let captionRegions = findAllCaptionRegions({ delta })
