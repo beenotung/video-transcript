@@ -55,27 +55,42 @@ export async function downloadVideo(url: string) {
     // e.g. '0  mp4 720x1280    30  2 |  15.39MiB 1022k http  | h264   960k aac    56k'
     let parts = line.split(' ').filter(part => part.length > 0)
 
+    let audio_only = line.includes('audio only')
+    let video_only = line.includes('video only')
+
     let id = parts[0]
     if (!id) continue
 
-    let format = parts[1]
-    if (!isVideoFormat(format)) continue
+    let ext = parts[1]
+    if (!isVideoExt(ext)) continue
 
     let resolution = parseResolution(parts[2])
-    if (!resolution || !resolution.width || !resolution.height) continue
 
     let fileSize = findFileSize(parts)
-    if (!fileSize || !Number.isFinite(fileSize)) continue
 
     formats.push({
       id,
-      format,
+      ext,
       resolution,
       fileSize,
+      audio_only,
+      video_only,
     })
   }
-  console.dir({ formats }, { depth: 20 })
-  formats.sort((a, b) => a.fileSize - b.fileSize)
+  console.dir({ allFormats: formats }, { depth: 20 })
+  formats = formats.filter(
+    format =>
+      !format.audio_only &&
+      isVideoExt(format.ext) &&
+      format.resolution !== 'none',
+  )
+  formats = tryFilter(formats, format => format.video_only)
+  console.dir({ selectedFormats: formats }, { depth: 20 })
+  formats.sort((a, b) => {
+    let aFileSize = a.fileSize ?? Number.MAX_SAFE_INTEGER
+    let bFileSize = b.fileSize ?? Number.MAX_SAFE_INTEGER
+    return aFileSize - bFileSize
+  })
   let format = formats[0]
   if (!format) {
     throw new Error('No format found')
@@ -92,13 +107,14 @@ export async function downloadVideo(url: string) {
   return { format }
 }
 
-function isVideoFormat(format: string) {
-  let formats = ['mp4', 'webm']
-  return formats.includes(format)
+function isVideoExt(ext: string) {
+  let exts = ['mp4', 'webm']
+  return exts.includes(ext)
 }
 
 function parseResolution(text: string) {
-  if (text === 'unknown') return null
+  if (text === 'audio') return 'none' as const
+  if (text === 'unknown') return 'unknown' as const
   // e.g. '720x1280'
   let parts = text.split('x')
   let width = +parts[0]
